@@ -1,0 +1,92 @@
+name: Terraform
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Format, validate, and plan
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    env:
+      AWS_REGION: ap-south-1
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.10.5
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform for pull request checks
+        if: github.event_name == 'pull_request'
+        run: terraform init -backend=false -input=false
+
+      - name: Configure AWS credentials
+        if: github.event_name != 'pull_request'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
+
+      - name: Prepare SSH public key
+        if: github.event_name != 'pull_request'
+        env:
+          SSH_PUBLIC_KEY: ${{ vars.SSH_PUBLIC_KEY }}
+        run: |
+          test -n "$SSH_PUBLIC_KEY" || {
+            echo "Set the SSH_PUBLIC_KEY repository variable to the public key text."
+            exit 1
+          }
+          printf '%s\n' "$SSH_PUBLIC_KEY" > "$RUNNER_TEMP/terraform-ssh-key.pub"
+          echo "TF_VAR_public_key_path=$RUNNER_TEMP/terraform-ssh-key.pub" >> "$GITHUB_ENV"
+
+      - name: Initialize Terraform with remote state
+        if: github.event_name != 'pull_request'
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+          TF_STATE_KEY: terraform-ansible/dev/terraform.tfstate
+        run: |
+          test -n "$TF_STATE_BUCKET" || {
+            echo "Set the TF_STATE_BUCKET repository variable to the S3 state bucket name."
+            exit 1
+          }
+          terraform init -input=false \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+
+      - name: Validate Terraform
+        run: terraform validate -no-color
+
+      - name: Create Terraform plan
+        if: github.event_name != 'pull_request'
+        run: terraform plan -input=false -no-color
