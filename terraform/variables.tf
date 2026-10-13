@@ -48,3 +48,8 @@ variable "availability_zone" {
   description = "aze"
   type        = string
 }
+
+variable "ssh_allowed_cidr" {
+  description = "Your public IPv4 address in CIDR notation"
+  type        = string
+}
