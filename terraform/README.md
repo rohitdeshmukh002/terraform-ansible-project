@@ -1,64 +1,77 @@
-# Terraform remote state
+# Terraform EC2 project
 
-The S3 state bucket is part of this Terraform configuration, so it must be
-created with local state before Terraform can switch to the S3 backend. The
-bootstrap targets below create only the bucket and its security settings; they
-leave the application infrastructure untouched.
+This Terraform configuration provisions an EC2 instance in AWS, along with a
+VPC, public subnet, internet gateway, route table, and security group. It also
+registers the local SSH public key as an EC2 key pair so AWS can associate it
+with the instance.
 
-From this directory, temporarily disable the S3 backend and initialize the
-local backend:
+## Prerequisites
 
-```sh
-mv backend.tf backend.tf.disabled
-terraform init -reconfigure
-```
+- Terraform CLI
+- AWS credentials configured for the AWS CLI or another supported credentials
+  provider, with permission to manage the resources in this configuration
+- An EC2 SSH key pair in this directory:
+  - `terra-ansible`: the private key used to connect to the instance
+  - `terra-ansible.pub`: the public key Terraform uploads to AWS
 
-Create the state bucket and its protections:
-
-```sh
-terraform apply \
-  -target=aws_s3_bucket.terraform_state \
-  -target=aws_s3_bucket_versioning.terraform_state \
-  -target=aws_s3_bucket_server_side_encryption_configuration.terraform_state \
-  -target=aws_s3_bucket_public_access_block.terraform_state
-```
-
-Restore the backend configuration and migrate the current local state:
+If you do not already have this key pair, create it from this directory:
 
 ```sh
-mv backend.tf.disabled backend.tf
-terraform init -migrate-state \
-  -backend-config="bucket=$(terraform output -raw state_bucket_name)" \
-  -backend-config="key=terraform-ansible/dev/terraform.tfstate" \
-  -backend-config="region=$(terraform output -raw state_bucket_region)" \
-  -backend-config="encrypt=true" \
-  -backend-config="use_lockfile=true"
+ssh-keygen -t ed25519 -f terra-ansible -C terraform-ansible
 ```
 
-Terraform uses an S3 lock file (`.tflock`) to prevent concurrent state
-changes. The AWS identity used by Terraform needs permission to read and write
-the state object and read, write, and delete the lock object.
+Do not overwrite an existing private key. Keep the private key secret and out
+of version control; these key files are ignored by `.gitignore`.
 
-The bucket has versioning, server-side encryption, public-access blocking, and
-Terraform destroy protection enabled. After migration, run normal `terraform
-plan` and `terraform apply` commands from this directory. Keep the local state
-and any backup state files private.
+## Configure and apply
 
-## GitHub Actions
+From this directory, review `terraform.tfvars`. It currently targets
+`ap-south-1`, uses the `ap-south-1a` availability zone, and registers the
+public key as the EC2 key pair `terra-ansible`. The AMI ID must be valid in the
+configured region.
 
-The Terraform workflow runs formatting and validation for pull requests without
-AWS credentials. On pushes to `main` (and manual runs), it also authenticates
-with AWS using OIDC and creates a Terraform plan. Configure these repository
-variables:
+Configure AWS credentials, then initialize and review the proposed changes:
 
-- `AWS_ROLE_ARN`: IAM role trusted for GitHub Actions OIDC and permitted to
-  read the Terraform-managed infrastructure and access the state bucket.
-- `TF_STATE_BUCKET`: the name of the S3 state bucket.
-- `SSH_PUBLIC_KEY`: the public SSH key text registered by the EC2 key-pair
-  resource.
+```sh
+aws sts get-caller-identity
+terraform init
+terraform fmt -check
+terraform validate
+terraform plan
+```
 
-The role needs the S3 state and `.tflock` object permissions documented above.
-Configure its OIDC trust policy for audience `sts.amazonaws.com` and restrict
-the subject to `repo:rohitdeshmukh002/terraform-ansible-project:ref:refs/heads/main`.
-Do not grant this role to `pull_request` events. The workflow does not apply
-infrastructure changes.
+Create the infrastructure after reviewing the plan:
+
+```sh
+terraform apply
+```
+
+Terraform stores state locally in this directory. Keep the state file and its
+backups private; they are ignored by Git.
+
+## Connect to the instance
+
+After apply completes, get the instance's public IP:
+
+```sh
+terraform output -raw ec2_public_ip
+```
+
+Connect using the private key that matches `terra-ansible.pub`:
+
+```sh
+ssh -i terra-ansible ubuntu@<public-ip>
+```
+
+The configured security group allows inbound HTTP on port 80 and SSH on port
+22. SSH is currently open to all IPv4 addresses; restrict this rule to your
+own IP address before using this configuration beyond a personal test.
+
+## Remove the infrastructure
+
+When you no longer need the resources, review and confirm their removal:
+
+```sh
+terraform plan -destroy
+terraform destroy
+```

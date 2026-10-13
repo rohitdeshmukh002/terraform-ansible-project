@@ -1,3 +1,5 @@
-terraform {
-  backend "s3" {}
-}
+# terraform {
+#   backend "s3" {
+#     bucket = "${var.project_name}-bucket"
+#   }
+# }

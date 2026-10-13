@@ -3,3 +3,6 @@
 *.tfstate.*
 *.tfplan
 crash.log
+
+terra-ansible
+terra-ansible.*

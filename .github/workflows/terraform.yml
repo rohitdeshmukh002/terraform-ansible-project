@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - "terraform/**"
+      - "ansible/**"
       - ".github/workflows/terraform.yml"
   push:
     branches:
       - main
     paths:
       - "terraform/**"
+      - "ansible/**"
       - ".github/workflows/terraform.yml"
   workflow_dispatch:
 
@@ -48,6 +50,16 @@ jobs:
         if: github.event_name == 'pull_request'
         run: terraform init -backend=false -input=false
 
+      - name: Check AWS role configuration
+        if: github.event_name != 'pull_request'
+        env:
+          AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          if [ -z "$AWS_ROLE_ARN" ]; then
+            echo "::error::Repository variable AWS_ROLE_ARN is not configured. Add the ARN of the GitHub OIDC IAM role in Settings > Secrets and variables > Actions > Variables."
+            exit 1
+          fi
+
       - name: Configure AWS credentials
         if: github.event_name != 'pull_request'
         uses: aws-actions/configure-aws-credentials@v4
@@ -66,6 +78,18 @@ jobs:
           }
           printf '%s\n' "$SSH_PUBLIC_KEY" > "$RUNNER_TEMP/terraform-ssh-key.pub"
           echo "TF_VAR_public_key_path=$RUNNER_TEMP/terraform-ssh-key.pub" >> "$GITHUB_ENV"
+
+      - name: Prepare worker SSH public key
+        if: github.event_name != 'pull_request'
+        env:
+          ANSIBLE_WORKER_PUBLIC_KEY: ${{ vars.ANSIBLE_WORKER_PUBLIC_KEY }}
+        run: |
+          test -n "$ANSIBLE_WORKER_PUBLIC_KEY" || {
+            echo "Set the ANSIBLE_WORKER_PUBLIC_KEY repository variable to the worker key's public key text."
+            exit 1
+          }
+          printf '%s\n' "$ANSIBLE_WORKER_PUBLIC_KEY" > "$RUNNER_TEMP/ansible-workers-key.pub"
+          echo "TF_VAR_worker_public_key_path=$RUNNER_TEMP/ansible-workers-key.pub" >> "$GITHUB_ENV"
 
       - name: Initialize Terraform with remote state
         if: github.event_name != 'pull_request'
