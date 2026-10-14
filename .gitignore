@@ -6,3 +6,6 @@ crash.log
 
 terra-ansible
 terra-ansible.*
+
+module
+module.*

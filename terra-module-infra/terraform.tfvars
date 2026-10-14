@@ -1,0 +1,6 @@
+region        = "ap-south-1"
+ami_id        = "ami-xxxxxxxx"
+instance_type = "t2.micro"
+vpc_cidr      = "10.0.0.0/16"
+project_name  = "module-use"
+env           = "dev"
