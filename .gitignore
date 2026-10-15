@@ -9,3 +9,6 @@ terra-ansible.*
 
 module
 module.*
+
+ansible-master-key
+ansible-master-key.*

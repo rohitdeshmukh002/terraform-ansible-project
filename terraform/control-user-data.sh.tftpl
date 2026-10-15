@@ -1,0 +1,18 @@
+#!/bin/bash
+set -euo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y ansible awscli
+
+install -d -o ubuntu -g ubuntu -m 0700 /home/ubuntu/.ssh
+aws secretsmanager get-secret-value \
+  --region "${aws_region}" \
+  --secret-id "${ansible_ssh_secret_arn}" \
+  --query SecretString \
+  --output text > /home/ubuntu/.ssh/ansible-workers
+chown ubuntu:ubuntu /home/ubuntu/.ssh/ansible-workers
+chmod 0600 /home/ubuntu/.ssh/ansible-workers
+
+printf 'export AWS_DEFAULT_REGION=%s\n' "${aws_region}" > /etc/profile.d/aws-region.sh
+chmod 0644 /etc/profile.d/aws-region.sh

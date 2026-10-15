@@ -20,6 +20,17 @@ variable "key_pair_name" {
   type        = string
 }
 
+variable "public_key_path" {
+  description = "Path to the public SSH key to register with AWS"
+  type        = string
+  default     = "terra-ansible.pub"
+}
+
+variable "ansible_ssh_secret_arn" {
+  description = "ARN of the Secrets Manager secret containing the matching worker SSH private key"
+  type        = string
+}
+
 variable "project_name" {
   description = "Project name"
   type        = string

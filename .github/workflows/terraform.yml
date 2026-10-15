@@ -79,17 +79,16 @@ jobs:
           printf '%s\n' "$SSH_PUBLIC_KEY" > "$RUNNER_TEMP/terraform-ssh-key.pub"
           echo "TF_VAR_public_key_path=$RUNNER_TEMP/terraform-ssh-key.pub" >> "$GITHUB_ENV"
 
-      - name: Prepare worker SSH public key
+      - name: Configure Ansible worker SSH secret
         if: github.event_name != 'pull_request'
         env:
-          ANSIBLE_WORKER_PUBLIC_KEY: ${{ vars.ANSIBLE_WORKER_PUBLIC_KEY }}
+          ANSIBLE_SSH_SECRET_ARN: ${{ vars.ANSIBLE_SSH_SECRET_ARN }}
         run: |
-          test -n "$ANSIBLE_WORKER_PUBLIC_KEY" || {
-            echo "Set the ANSIBLE_WORKER_PUBLIC_KEY repository variable to the worker key's public key text."
+          test -n "$ANSIBLE_SSH_SECRET_ARN" || {
+            echo "Set the ANSIBLE_SSH_SECRET_ARN repository variable to the Secrets Manager secret ARN."
             exit 1
           }
-          printf '%s\n' "$ANSIBLE_WORKER_PUBLIC_KEY" > "$RUNNER_TEMP/ansible-workers-key.pub"
-          echo "TF_VAR_worker_public_key_path=$RUNNER_TEMP/ansible-workers-key.pub" >> "$GITHUB_ENV"
+          echo "TF_VAR_ansible_ssh_secret_arn=$ANSIBLE_SSH_SECRET_ARN" >> "$GITHUB_ENV"
 
       - name: Initialize Terraform with remote state
         if: github.event_name != 'pull_request'

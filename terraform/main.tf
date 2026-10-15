@@ -53,7 +53,48 @@ resource "aws_security_group" "managed_sg" {
 
 resource "aws_key_pair" "server_key" {
   key_name   = var.key_pair_name
-  public_key = file("${path.module}/terra-ansible.pub")
+  public_key = file(var.public_key_path)
+}
+
+resource "aws_iam_role" "ansible_control" {
+  name = "${var.project_name}-${var.environment}-ansible-control"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ansible_control" {
+  name = "${var.project_name}-${var.environment}-ansible-control"
+  role = aws_iam_role.ansible_control.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action   = ["secretsmanager:GetSecretValue"]
+        Effect   = "Allow"
+        Resource = var.ansible_ssh_secret_arn
+      },
+      {
+        Action   = ["ec2:DescribeInstances"]
+        Effect   = "Allow"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "ansible_control" {
+  name = "${var.project_name}-${var.environment}-ansible-control"
+  role = aws_iam_role.ansible_control.name
 }
 
 # Ansible control node
@@ -64,6 +105,12 @@ resource "aws_instance" "control" {
   subnet_id                   = aws_subnet.sub_net.id
   vpc_security_group_ids      = [aws_security_group.control_sg.id]
   associate_public_ip_address = true
+  iam_instance_profile        = aws_iam_instance_profile.ansible_control.name
+  user_data = templatefile("${path.module}/control-user-data.sh.tftpl", {
+    aws_region             = var.aws_region
+    ansible_ssh_secret_arn = var.ansible_ssh_secret_arn
+  })
+  user_data_replace_on_change = true
 
   tags = {
     Name = "${var.project_name}-${var.environment}-control"
